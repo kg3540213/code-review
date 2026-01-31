@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { createReview } from '../api/reviews';
+import { getMyReviews } from '../api/reviews';
 
 const LANGUAGES = [
   'JavaScript', 'TypeScript', 'Python', 'Java', 'C++', 'C#', 'Go', 'Rust',
@@ -15,6 +16,10 @@ export default function CodeReview() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { user, logout, fetchUser } = useAuth();
+  const [showPrevious, setShowPrevious] = useState(false);
+  const [previousReviews, setPreviousReviews] = useState([]);
+  const [simpleView, setSimpleView] = useState(false);
+  const [copyMsg, setCopyMsg] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -34,6 +39,54 @@ export default function CodeReview() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadPrevious = async () => {
+    if (previousReviews.length) {
+      setShowPrevious((s) => !s);
+      return;
+    }
+    try {
+      const { data } = await getMyReviews();
+      setPreviousReviews(data || []);
+      setShowPrevious(true);
+    } catch (err) {
+      setError('Unable to fetch previous reviews.');
+    }
+  };
+
+  const getSimpleSummary = (text) => {
+    if (!text) return '';
+    // Try to extract a 'Summary' section if present
+    const match = text.match(/summary[:\n\s]*([\s\S]{20,400}?)(?:\n\d\.|\n\n|$)/i);
+    if (match) return match[1].trim();
+    // Fallback: first 300 characters (end at sentence)
+    const short = text.trim().slice(0, 400);
+    const end = short.lastIndexOf('.');
+    return (end > 50 ? short.slice(0, end + 1) : short) + (text.length > short.length ? '...' : '');
+  };
+
+  const renderAiResponse = (text) => {
+    if (!text) return null;
+    // Split by triple-backtick code blocks and render code blocks in monospace
+    const parts = text.split(/```([a-zA-Z0-9+#\-]*)\n([\s\S]*?)```/g);
+    // parts will be [before, lang1, code1, after, ...]
+    const nodes = [];
+    for (let i = 0; i < parts.length; ) {
+      const before = parts[i++] || '';
+      if (before) nodes.push(<div key={`t-${i}`} className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-gray-300">{before}</div>);
+      if (i < parts.length) {
+        const lang = parts[i++];
+        const codeBlock = parts[i++] || '';
+        nodes.push(
+          <pre key={`c-${i}`} className="my-4 p-4 rounded-lg bg-dark-700 overflow-x-auto text-sm font-mono text-green-200">
+            <div className="text-xs text-gray-400 mb-2">{lang || language}</div>
+            <code>{codeBlock.trim()}</code>
+          </pre>
+        );
+      }
+    }
+    return nodes;
   };
 
   return (
@@ -114,9 +167,87 @@ export default function CodeReview() {
           <div className="mt-10 animate-slide-up">
             <h2 className="text-xl font-display font-semibold text-accent-cyan mb-4">AI review</h2>
             <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6 overflow-hidden">
-              <div className="text-gray-300 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">
-                {result.aiResponse}
+              <div className="flex items-start justify-between mb-4 gap-4">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSimpleView((s) => !s)}
+                    className="px-3 py-1 rounded-md bg-dark-700 border border-dark-600 text-sm text-gray-200 hover:bg-dark-600"
+                  >
+                    {simpleView ? 'Show full' : 'Simplify'}
+                  </button>
+                  <button
+                    onClick={loadPrevious}
+                    className="px-3 py-1 rounded-md bg-dark-700 border border-dark-600 text-sm text-gray-200 hover:bg-dark-600"
+                  >
+                    {showPrevious ? 'Hide previous' : 'Show my previous reviews'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(code || result?.code || '');
+                        setCopyMsg('Code copied');
+                        setTimeout(() => setCopyMsg(''), 2000);
+                      } catch (e) {
+                        setCopyMsg('Copy failed');
+                        setTimeout(() => setCopyMsg(''), 2000);
+                      }
+                    }}
+                    className="px-3 py-1 rounded-md bg-dark-700 border border-dark-600 text-sm text-gray-200 hover:bg-dark-600"
+                  >
+                    Copy code
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(result?.aiResponse || '');
+                        setCopyMsg('Review copied');
+                        setTimeout(() => setCopyMsg(''), 2000);
+                      } catch (e) {
+                        setCopyMsg('Copy failed');
+                        setTimeout(() => setCopyMsg(''), 2000);
+                      }
+                    }}
+                    className="px-3 py-1 rounded-md bg-dark-700 border border-dark-600 text-sm text-gray-200 hover:bg-dark-600"
+                  >
+                    Copy review
+                  </button>
+                </div>
+                <div className="text-xs text-gray-400">{new Date(result.createdAt || Date.now()).toLocaleString()}</div>
               </div>
+              {copyMsg && <div className="text-sm text-green-400 mb-3">{copyMsg}</div>}
+
+              {simpleView ? (
+                <div className="text-gray-300 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">
+                  {getSimpleSummary(result.aiResponse)}
+                </div>
+              ) : (
+                <div>{renderAiResponse(result.aiResponse)}</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {showPrevious && (
+          <div className="mt-6">
+            <h3 className="text-lg font-medium text-gray-200 mb-3">Your previous reviews</h3>
+            <div className="grid gap-3">
+              {previousReviews.length === 0 && <div className="text-sm text-gray-400">No reviews found.</div>}
+              {previousReviews.map((r) => (
+                <button
+                  key={r._id}
+                  onClick={() => {
+                    setResult(r);
+                    setSimpleView(false);
+                    setShowPrevious(false);
+                    setCode(r.code || '');
+                    setLanguage(r.language || language);
+                  }}
+                  className="text-left p-3 rounded-lg bg-dark-700 border border-dark-600 hover:bg-dark-600"
+                >
+                  <div className="text-sm text-gray-200 font-medium">{r.language} review · {new Date(r.createdAt).toLocaleString()}</div>
+                  <div className="text-xs text-gray-400 truncate">{(r.aiResponse || '').slice(0, 140)}{(r.aiResponse || '').length > 140 ? '...' : ''}</div>
+                </button>
+              ))}
             </div>
           </div>
         )}

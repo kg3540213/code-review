@@ -60,21 +60,21 @@ aiCodeReview/
 **Backend** – copy `backend/.env.example` to `backend/.env` and set:
 
 ```env
-PORT=
-NODE_ENV=
-MONGODB_URI=
-JWT_SECRET=
-JWT_EXPIRES_IN=
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GEMINI_API_KEY=
-CLIENT_URL=
+PORT=5000
+NODE_ENV=development
+MONGODB_URI=mongodb://localhost:27017/ai-code-review
+JWT_SECRET=your-super-secret-jwt-key
+JWT_EXPIRES_IN=7d
+GOOGLE_CLIENT_ID=...apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=...
+GEMINI_API_KEY=...
+CLIENT_URL=http://localhost:5173
 ```
 
 **Frontend** – copy `frontend/.env.example` to `frontend/.env` and set:
 
 ```env
-VITE_GOOGLE_CLIENT_ID=
+VITE_GOOGLE_CLIENT_ID=...apps.googleusercontent.com
 ```
 
 (Optional) `VITE_API_URL` – leave empty when using Vite proxy to `http://localhost:5000` in dev.
